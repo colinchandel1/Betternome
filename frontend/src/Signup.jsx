@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 function Signup() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState(0);
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
@@ -14,7 +15,7 @@ function Signup() {
       const response = await fetch('http://localhost:8000/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username, password, role })
       });
       if (response.ok) {
         const data = await response.json();
@@ -49,6 +50,16 @@ function Signup() {
           onChange={(e) => setPassword(e.target.value)} 
           required 
         />
+        <input
+          id="role-checkbox"
+          type="checkbox"
+          placeholder="Role"
+          checked={role}
+          onChange={(e) => setRole(e.target.checked ? 1 : 0)}
+        />
+        <label
+          for="role-checkbox"
+        >I am an instructor</label>
         <button type="submit">Sign Up</button>
       </form>
     </div>
