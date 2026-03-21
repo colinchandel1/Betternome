@@ -1,22 +1,31 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 function Signup() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
     try {
       const response = await fetch('http://localhost:8000/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
-      const data = await response.json();
-      console.log(data.message);
-    } catch (error) {
-      console.error('Error:', error);
+      if (response.ok) {
+        const data = await response.json();
+        localStorage.setItem('token', data.token);
+        navigate('/dashboard');
+      } else {
+        const errorData = await response.json();
+        setError(errorData.detail);
+      }
+    } catch (error) { // eslint-disable-line no-unused-vars
+      setError('An error occurred. Please try again.');
     }
   };
 
@@ -25,6 +34,7 @@ function Signup() {
       <Link to="/">Back to Home</Link>
       <form onSubmit={handleSubmit}>
         <h2>Sign Up</h2>
+        {error && <p style={{ color: 'red' }}>{error}</p>}
         <input 
           type="text" 
           placeholder="Username" 

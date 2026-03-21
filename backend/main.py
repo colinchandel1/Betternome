@@ -4,6 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import sqlite3
 import bcrypt
+import jwt
+import datetime
+
+SECRET_KEY = "your-secret-key"  # In production, use environment variable
 
 origins = [
     "http://localhost",
@@ -59,7 +63,13 @@ def register(user: UserCreate):
     c.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (user.username, hashed.decode('utf-8')))
     conn.commit()
     conn.close()
-    return {"message": "Account created successfully"}
+    # Generate token
+    token = jwt.encode(
+        {"username": user.username, "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)},
+        SECRET_KEY,
+        algorithm="HS256"
+    )
+    return {"message": "Account created successfully", "token": token}
 
 @app.post("/login")
 def login(user: UserLogin):
@@ -69,7 +79,12 @@ def login(user: UserLogin):
     row = c.fetchone()
     conn.close()
     if row and bcrypt.checkpw(user.password.encode('utf-8'), row[0].encode('utf-8')):
-        return {"message": "Login successful"}
+        token = jwt.encode(
+            {"username": user.username, "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)},
+            SECRET_KEY,
+            algorithm="HS256"
+        )
+        return {"message": "Login successful", "token": token}
     else:
         raise HTTPException(status_code=400, detail="Invalid credentials")
 
