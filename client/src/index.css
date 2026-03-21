@@ -1,0 +1,205 @@
+/* ── Reset & base ─────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f5f6fa;
+  color: #2d3436;
+  min-height: 100vh;
+}
+
+/* ── Layout helpers ───────────────────────────── */
+.container { max-width: 1100px; margin: 0 auto; padding: 0 1.25rem; }
+.card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  padding: 1.5rem;
+}
+
+/* ── Buttons ──────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1.2rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s, transform .1s;
+  text-decoration: none;
+}
+.btn:hover { opacity: .85; }
+.btn:active { transform: scale(.97); }
+.btn-primary { background: #6c63ff; color: #fff; }
+.btn-danger  { background: #d63031; color: #fff; }
+.btn-ghost   { background: transparent; color: #6c63ff; border: 2px solid #6c63ff; }
+.btn-sm      { padding: .35rem .8rem; font-size: .8rem; }
+
+/* ── Form elements ────────────────────────────── */
+.form-group { display: flex; flex-direction: column; gap: .4rem; margin-bottom: 1rem; }
+.form-group label { font-weight: 600; font-size: .85rem; color: #636e72; }
+input[type=text], input[type=file], select, textarea {
+  padding: .55rem .8rem;
+  border: 1.5px solid #dfe6e9;
+  border-radius: 8px;
+  font-size: .95rem;
+  width: 100%;
+  background: #fff;
+  transition: border-color .2s;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #6c63ff;
+}
+
+/* ── Badges ───────────────────────────────────── */
+.badge {
+  display: inline-block;
+  padding: .2rem .6rem;
+  border-radius: 999px;
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.badge-instructor { background: #6c63ff22; color: #6c63ff; }
+.badge-student    { background: #00b89422; color: #00b894; }
+.badge-pdf        { background: #e1703222; color: #e17032; }
+.badge-audio      { background: #0984e322; color: #0984e3; }
+
+/* ── Alerts ───────────────────────────────────── */
+.alert { padding: .75rem 1rem; border-radius: 8px; font-size: .9rem; margin-bottom: 1rem; }
+.alert-error   { background: #ff7675; color: #fff; }
+.alert-success { background: #00b894; color: #fff; }
+.alert-info    { background: #0984e3; color: #fff; }
+
+/* ── Page loading spinner ─────────────────────── */
+.spinner-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+}
+.spinner {
+  width: 48px; height: 48px;
+  border: 5px solid #dfe6e9;
+  border-top-color: #6c63ff;
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Navbar ───────────────────────────────────── */
+.navbar {
+  background: #fff;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.navbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 60px;
+}
+.navbar-brand {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #6c63ff;
+  text-decoration: none;
+}
+.navbar-nav { display: flex; align-items: center; gap: 1rem; }
+.nav-link { color: #636e72; text-decoration: none; font-weight: 500; font-size: .95rem; }
+.nav-link:hover { color: #6c63ff; }
+.user-avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #6c63ff;
+}
+
+/* ── Login page ───────────────────────────────── */
+.login-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem;
+  text-align: center;
+}
+.login-card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(108,99,255,0.15);
+  padding: 3rem 2.5rem;
+  max-width: 420px;
+  width: 100%;
+}
+.login-logo { font-size: 3rem; margin-bottom: .5rem; }
+.login-title { font-size: 2rem; font-weight: 800; color: #2d3436; margin-bottom: .4rem; }
+.login-subtitle { color: #636e72; font-size: 1rem; margin-bottom: 2rem; }
+.login-divider { border: none; border-top: 1px solid #eee; margin: 1.5rem 0; }
+.login-footer { font-size: .82rem; color: #b2bec3; margin-top: 1.5rem; }
+
+/* ── Dashboard ────────────────────────────────── */
+.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+.page-title { font-size: 1.6rem; font-weight: 800; }
+.classroom-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.25rem; }
+.classroom-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  padding: 1.25rem 1.5rem;
+  cursor: pointer;
+  transition: box-shadow .2s, transform .15s;
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+.classroom-card:hover { box-shadow: 0 4px 20px rgba(108,99,255,0.18); transform: translateY(-2px); }
+.classroom-card-title { font-size: 1.1rem; font-weight: 700; margin-bottom: .4rem; }
+.classroom-card-desc  { color: #636e72; font-size: .88rem; }
+.empty-state { text-align: center; color: #b2bec3; padding: 3rem 0; }
+
+/* ── Classroom page ───────────────────────────── */
+.file-list { display: flex; flex-direction: column; gap: .75rem; margin-top: 1rem; }
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: .75rem 1rem;
+}
+.file-item-name { flex: 1; font-weight: 500; font-size: .9rem; word-break: break-all; }
+.file-item-meta { font-size: .78rem; color: #b2bec3; }
+
+/* ── Role selection ───────────────────────────── */
+.role-select-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 80vh;
+  padding: 2rem;
+  text-align: center;
+}
+.role-cards { display: flex; gap: 1.5rem; flex-wrap: wrap; justify-content: center; margin-top: 2rem; }
+.role-card {
+  background: #fff;
+  border: 2px solid #dfe6e9;
+  border-radius: 16px;
+  padding: 2rem 2.5rem;
+  cursor: pointer;
+  transition: border-color .2s, box-shadow .2s;
+  width: 200px;
+  text-align: center;
+}
+.role-card:hover { border-color: #6c63ff; box-shadow: 0 4px 20px rgba(108,99,255,0.15); }
+.role-card-icon { font-size: 2.5rem; margin-bottom: .75rem; }
+.role-card-title { font-size: 1.1rem; font-weight: 700; }
