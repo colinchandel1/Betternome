@@ -1,4 +1,7 @@
+from fastapi import UploadFile, File, Form
+import os
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -33,6 +36,9 @@ class UserLogin(BaseModel):
     username: str
     password: str
 
+class EnrollRequest(BaseModel):
+    class_name: str
+
 # style guide: lower case, join with underscores, verb forms (when used) that end in s
 
 # tables (not anymore, but if students and teachers get really complicated, we might want to switch to this):
@@ -56,7 +62,7 @@ def init_db():
 
     c.execute('''CREATE TABLE IF NOT EXISTS classes (
         id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL
+        name TEXT NOT NULL UNIQUE
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS enrollments (
@@ -74,6 +80,27 @@ def init_db():
         FOREIGN KEY(user_id) REFERENCES users(id),
         FOREIGN KEY(class_id) REFERENCES classes(id)
     )''')
+
+    # Modular file uploads: music_scores table (can extend for other file types)
+    c.execute('''CREATE TABLE IF NOT EXISTS music_scores (
+        id INTEGER PRIMARY KEY,
+        class_id INTEGER,
+        file_path TEXT NOT NULL,
+        uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        file_type TEXT DEFAULT 'pdf',
+        FOREIGN KEY(class_id) REFERENCES classes(id)
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS audio_files (
+        id INTEGER PRIMARY KEY,
+        class_id INTEGER,
+        file_path TEXT NOT NULL,
+        uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        file_type TEXT NOT NULL,
+        FOREIGN KEY(class_id) REFERENCES classes(id)
+    )''')
+
+    # Modular file uploads: music audio files (mp3 and wav for now, but want more, like aiff, m4a, aav)
 
     conn.commit()
     conn.close()
@@ -113,12 +140,13 @@ def register(user: UserCreate):
 def login(user: UserLogin):
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
-    c.execute("SELECT password_hash FROM users WHERE username = ?", (user.username,))
+    c.execute("SELECT password_hash, role FROM users WHERE username = ?", (user.username,))
     row = c.fetchone()
     conn.close()
     if row and bcrypt.checkpw(user.password.encode('utf-8'), row[0].encode('utf-8')):
+        role = row[1]
         token = jwt.encode(
-            {"username": user.username, "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)},
+            {"username": user.username, "role": role, "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)},
             SECRET_KEY,
             algorithm="HS256"
         )
@@ -162,6 +190,364 @@ def enrollments(request: Request):
     classes = [row[0] for row in c.fetchall()]
     conn.close()
     return {"enrollments": classes}
+
+@app.post("/do-enroll")
+def do_enroll(request: Request, enroll: EnrollRequest):
+    """Remove in future (sandbox only, not production). TODO: teachers or some information system should perform enrollments with authentication"""
+    payload = try_get_payload_from_request(request)
+
+    username = payload["username"]
+    class_name = enroll.class_name
+
+    # username -> users
+    # class name -> classes (class id)
+    # insert user id, class id into enrollments
+
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+
+    # Get user id
+    c.execute("SELECT id FROM users WHERE username = ?", (username,))
+    user_row = c.fetchone()
+    if not user_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="User not found")
+    user_id = user_row[0]
+
+    # Get class id
+    c.execute("SELECT id FROM classes WHERE name = ?", (class_name,))
+    class_row = c.fetchone()
+    if not class_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Class not found")
+    class_id = class_row[0]
+
+    # Insert into enrollments
+    try:
+        c.execute("INSERT INTO enrollments (user_id, class_id) VALUES (?, ?)", (user_id, class_id))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Already enrolled or invalid enrollment")
+    conn.close()
+    return {"message": f"Enrolled in {class_name} successfully"}
+
+
+class CreateClassRequest(BaseModel):
+    class_name: str
+
+@app.post("/create-class")
+def create_class(request: Request, create: CreateClassRequest):
+    payload = try_get_payload_from_request(request)
+    class_name = create.class_name
+
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    # Check if class already exists (enforced by UNIQUE constraint, but check for user-friendly error)
+    c.execute("SELECT id FROM classes WHERE name = ?", (class_name,))
+    if c.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="Class already exists")
+    try:
+        c.execute("INSERT INTO classes (name) VALUES (?)", (class_name,))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Class already exists (unique constraint)")
+    conn.close()
+    return {"message": f"Class '{class_name}' created successfully"}
+
+def try_get_payload_from_request(request: Request):
+    auth_header = request.headers.get("authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=400, detail="Expired credentials")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=400, detail="Invalid token")
+
+
+# --- Music Score Endpoints ---
+
+UPLOAD_DIR = "uploaded_scores"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+AUDIO_UPLOAD_DIR = "audio_uploads"
+os.makedirs(AUDIO_UPLOAD_DIR, exist_ok=True)
+
+# Upload a music score (PDF) for a class
+@app.post("/upload-music-score")
+async def upload_music_score(request: Request, class_name: str = Form(...), file: UploadFile = File(...)):
+    payload = try_get_payload_from_request(request)
+    # Optionally: check instructor permissions here
+    # Save file
+    if (not file.filename) or (not file.filename.lower().endswith(".pdf")):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+    safe_original_name = os.path.basename(file.filename)
+    if safe_original_name != file.filename:
+        raise HTTPException(status_code=400, detail="Invalid file name")
+    safe_class_part = class_name.replace("/", "_").replace("\\\\", "_")
+    file_path = os.path.join(UPLOAD_DIR, f"{safe_class_part}_{int(datetime.datetime.utcnow().timestamp())}_{safe_original_name}")
+
+    # Insert into DB
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+
+    # get class id
+    c.execute("SELECT id FROM classes WHERE name = ?", (class_name,))
+    class_row = c.fetchone()
+    if not class_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Class not found")
+    class_id = class_row[0]
+
+    c.execute("INSERT INTO music_scores (class_id, file_path, file_type) VALUES (?, ?, ?)", (class_id, file_path, "pdf"))
+
+    # upload file only if everything is valid. If upload files, rollback commit (keep storage and db in sync)
+    try:
+        with open(file_path, "wb") as f:
+            f.write(await file.read())
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+    conn.close()
+    return {"message": "File uploaded successfully", "file_path": file_path}
+
+
+# --- Audio File Endpoints ---
+
+@app.post("/upload-audio-file")
+async def upload_audio_file(request: Request, class_name: str = Form(...), file: UploadFile = File(...)):
+    payload = try_get_payload_from_request(request)
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Missing file name")
+
+    safe_original_name = os.path.basename(file.filename)
+    if safe_original_name != file.filename:
+        raise HTTPException(status_code=400, detail="Invalid file name")
+
+    lower_name = safe_original_name.lower()
+    if not (lower_name.endswith(".mp3") or lower_name.endswith(".wav")):
+        raise HTTPException(status_code=400, detail="Only MP3 and WAV files are supported")
+
+    file_type = "mp3" if lower_name.endswith(".mp3") else "wav"
+    safe_class_part = class_name.replace("/", "_").replace("\\\\", "_")
+    file_path = os.path.join(
+        AUDIO_UPLOAD_DIR,
+        f"{safe_class_part}_{int(datetime.datetime.utcnow().timestamp())}_{safe_original_name}",
+    )
+
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT id FROM classes WHERE name = ?", (class_name,))
+    class_row = c.fetchone()
+    if not class_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Class not found")
+    class_id = class_row[0]
+
+    c.execute(
+        "INSERT INTO audio_files (class_id, file_path, file_type) VALUES (?, ?, ?)",
+        (class_id, file_path, file_type),
+    )
+
+    try:
+        with open(file_path, "wb") as f:
+            f.write(await file.read())
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+    return {"message": "Audio uploaded successfully", "file_path": file_path, "file_type": file_type}
+
+
+@app.get("/audio-files")
+def get_audio_files(class_name: str):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+
+    c.execute("SELECT id FROM classes WHERE name = ?", (class_name,))
+    class_row = c.fetchone()
+    if not class_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Class not found")
+    class_id = class_row[0]
+
+    c.execute(
+        "SELECT id, file_path, file_type, uploaded_at FROM audio_files WHERE class_id = ? ORDER BY uploaded_at DESC",
+        (class_id,),
+    )
+    files = [
+        {"id": row[0], "file_path": row[1], "file_type": row[2], "uploaded_at": row[3]}
+        for row in c.fetchall()
+    ]
+    conn.close()
+    return {"files": files}
+
+
+@app.get("/audio-files/recent")
+def get_recent_audio_files(limit: int = 3, class_name: str | None = None):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    if class_name is not None:
+        c.execute("SELECT id FROM classes WHERE name = ?", (class_name,))
+        class_row = c.fetchone()
+        if not class_row:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Class not found")
+        class_id = class_row[0]
+        c.execute(
+            "SELECT id, file_path, file_type, uploaded_at FROM audio_files WHERE class_id = ? ORDER BY uploaded_at DESC LIMIT ?",
+            (class_id, limit),
+        )
+    else:
+        c.execute(
+            "SELECT id, file_path, file_type, uploaded_at FROM audio_files ORDER BY uploaded_at DESC LIMIT ?",
+            (limit,),
+        )
+    files = [
+        {"id": row[0], "file_path": row[1], "file_type": row[2], "uploaded_at": row[3]}
+        for row in c.fetchall()
+    ]
+    conn.close()
+    return {"files": files}
+
+# Fetch all files for a class
+@app.get("/music-scores")
+def get_music_scores(class_name: str):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+
+    c.execute("SELECT id FROM classes WHERE name = ?", (class_name,))
+    class_row = c.fetchone()
+    if not class_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Class not found")
+    class_id = class_row[0]
+
+    c.execute("SELECT id, file_path, uploaded_at FROM music_scores WHERE class_id = ? ORDER BY uploaded_at DESC", (class_id,))
+    files = [
+        {"id": row[0], "file_path": row[1], "uploaded_at": row[2]}
+        for row in c.fetchall()
+    ]
+    conn.close()
+    return {"files": files}
+
+# Fetch N most recent files (across all classes or for a class)
+@app.get("/music-scores/recent")
+def get_recent_music_scores(limit: int = 3, class_name: str|None = None):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    if class_name is not None:
+        c.execute("SELECT id FROM classes WHERE name = ?", (class_name,))
+        class_row = c.fetchone()
+        if not class_row:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Class not found")
+        class_id = class_row[0]
+        c.execute("SELECT id, file_path, uploaded_at FROM music_scores WHERE class_id = ? ORDER BY uploaded_at DESC LIMIT ?", (class_id, limit))
+    else:
+        c.execute("SELECT id, file_path, uploaded_at FROM music_scores ORDER BY uploaded_at DESC LIMIT ?", (limit,))
+    files = [
+        {"id": row[0], "file_path": row[1], "uploaded_at": row[2]}
+        for row in c.fetchall()
+    ]
+    conn.close()
+    return {"files": files}
+
+class TeachClassRequest(BaseModel):
+    class_name: str
+
+# Endpoint for instructor to start teaching a class
+@app.post("/start-teaching")
+def start_teaching(request: Request, teach: TeachClassRequest):
+    payload = try_get_payload_from_request(request)
+    username = payload["username"]
+    # Get user id
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT id, role FROM users WHERE username = ?", (username,))
+    user_row = c.fetchone()
+    if not user_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="User not found")
+    user_id, role = user_row
+    if role != 1:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Only instructors can teach classes")
+    # Get class id
+    c.execute("SELECT id FROM classes WHERE name = ?", (teach.class_name,))
+    class_row = c.fetchone()
+    if not class_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Class not found")
+    class_id = class_row[0]
+    # Insert into teaches
+    try:
+        c.execute("INSERT INTO teaches (user_id, class_id) VALUES (?, ?)", (user_id, class_id))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Already teaching this class")
+    conn.close()
+    return {"message": f"Now teaching {teach.class_name}"}
+
+@app.get("/files/uploaded_scores/{file_name}")
+def get_uploaded_score_file(file_name: str):
+    safe_name = os.path.basename(file_name)
+    if safe_name != file_name:
+        raise HTTPException(status_code=400, detail="Invalid file name")
+
+    if not safe_name.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    file_path = os.path.join(UPLOAD_DIR, safe_name)
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(
+        file_path,
+        media_type="application/pdf",
+        filename=safe_name,
+        content_disposition_type="inline"
+        #headers={
+        #    "Content-Disposition": "inline"
+        #}
+        )
+
+
+@app.get("/files/audio_uploads/{file_name}")
+def get_uploaded_audio_file(file_name: str):
+    safe_name = os.path.basename(file_name)
+    if safe_name != file_name:
+        raise HTTPException(status_code=400, detail="Invalid file name")
+
+    lower_name = safe_name.lower()
+    if not (lower_name.endswith(".mp3") or lower_name.endswith(".wav")):
+        raise HTTPException(status_code=400, detail="Only MP3 and WAV files are supported")
+
+    file_path = os.path.join(AUDIO_UPLOAD_DIR, safe_name)
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    media_type = "audio/mpeg" if lower_name.endswith(".mp3") else "audio/wav"
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        filename=safe_name,
+        content_disposition_type="inline",
+    )
+
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8000, log_level="info")
