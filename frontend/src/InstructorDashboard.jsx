@@ -19,8 +19,10 @@ function InstructorDashboard() {
 	const [uploadClass, setUploadClass] = useState('');
     const [error, setError] = useState('');
 	const [file, setFile] = useState(null);
+	const [audioFile, setAudioFile] = useState(null);
 	const [message, setMessage] = useState('');
 	const fileInputRef = useRef();
+	const audioInputRef = useRef();
 
 	useEffect(() => {
 		if (!token) {
@@ -77,6 +79,31 @@ function InstructorDashboard() {
 			});
 	};
 
+	const uploadAudio = () => {
+		if (!audioFile || !uploadClass) {
+			setMessage('Please select a class and an MP3/WAV file.');
+			return;
+		}
+		const formData = new FormData();
+		formData.append('class_name', uploadClass);
+		formData.append('file', audioFile);
+		fetch('http://localhost:8000/upload-audio-file', {
+			method: 'POST',
+			headers: { 'Authorization': `Bearer ${token}` },
+			body: formData
+		})
+			.then(async (response) => {
+				const data = await response.json();
+				if (response.ok) {
+					setMessage('Audio upload successful!');
+					setAudioFile(null);
+					if (audioInputRef.current) audioInputRef.current.value = '';
+				} else {
+					setMessage(data.detail || 'Audio upload failed');
+				}
+			});
+	};
+
 	return (
 		<div>
 			<h1>Welcome Instructor {username}!</h1>
@@ -99,7 +126,7 @@ function InstructorDashboard() {
 			<div style={{ margin: '1em 0' }}>
 				<input
 					type="text"
-					placeholder="Class ID for upload"
+					placeholder="Class name for upload"
 					value={uploadClass}
 					onChange={e => setUploadClass(e.target.value)}
 				/>
@@ -110,6 +137,21 @@ function InstructorDashboard() {
 					onChange={e => setFile(e.target.files[0])}
 				/>
 				<button onClick={uploadMusicSheet}>Upload Music Sheet (PDF)</button>
+			</div>
+			<div style={{ margin: '1em 0' }}>
+				<input
+					type="text"
+					placeholder="Class name for audio upload"
+					value={uploadClass}
+					onChange={e => setUploadClass(e.target.value)}
+				/>
+				<input
+					type="file"
+					accept="audio/mpeg,audio/wav,.mp3,.wav"
+					ref={audioInputRef}
+					onChange={e => setAudioFile(e.target.files[0])}
+				/>
+				<button onClick={uploadAudio}>Upload Audio (MP3/WAV)</button>
 			</div>
 		</div>
 	);

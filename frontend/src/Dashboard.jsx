@@ -17,6 +17,7 @@ function Dashboard() {
   const [enrollments, setEnrollments] = useState([]);
   const [expanded, setExpanded] = useState({});
   const [latestFiles, setLatestFiles] = useState({});
+  const [latestAudio, setLatestAudio] = useState({});
 
   // Decode JWT payload to get username and role
   let username = '';
@@ -69,6 +70,16 @@ function Dashboard() {
           if (response.ok) {
             const data = await response.json();
             setLatestFiles(prev => ({ ...prev, [course]: data.files }));
+          }
+        });
+    }
+
+    if (!latestAudio[course]) {
+      fetch(`http://localhost:8000/audio-files/recent?class_name=${encodeURIComponent(course)}&limit=3`)
+        .then(async (response) => {
+          if (response.ok) {
+            const data = await response.json();
+            setLatestAudio(prev => ({ ...prev, [course]: data.files }));
           }
         });
     }
@@ -176,7 +187,7 @@ function Dashboard() {
             </button>
             {expanded[course] && (
               <div style={{ width: '100%', background: '#eef', padding: '1em', marginTop: '1em' }}>
-                <strong>Latest Files:</strong>
+                <strong>Latest Scores:</strong>
                 <ul>
                   {(latestFiles[course] || []).length === 0 && <li>No files uploaded yet.</li>}
                   {(latestFiles[course] || []).map(file =>
@@ -184,6 +195,25 @@ function Dashboard() {
                       {(() => {
                         const fileName = (file.file_path || '').split(/[\\/]/).pop();
                         const url = `http://localhost:8000/files/uploaded_scores/${encodeURIComponent(fileName)}`;
+                        return (
+                          <a href={url} target="_blank" rel="noopener noreferrer">
+                            {fileName}
+                          </a>
+                        );
+                      })()}
+                      ({new Date(file.uploaded_at).toLocaleString()})
+                    </li>
+                  )}
+                </ul>
+
+                <strong>Latest Audio:</strong>
+                <ul>
+                  {(latestAudio[course] || []).length === 0 && <li>No audio uploaded yet.</li>}
+                  {(latestAudio[course] || []).map(file =>
+                    <li key={file.id}>
+                      {(() => {
+                        const fileName = (file.file_path || '').split(/[\\/]/).pop();
+                        const url = `http://localhost:8000/files/audio_uploads/${encodeURIComponent(fileName)}`;
                         return (
                           <a href={url} target="_blank" rel="noopener noreferrer">
                             {fileName}

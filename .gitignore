@@ -29,4 +29,6 @@ __pycache__
 # database
 *.db
 uploaded_scores
+audio_uploads
 **.pdf
+**.mp3
